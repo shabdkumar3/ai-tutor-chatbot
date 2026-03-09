@@ -3,7 +3,7 @@
 An intelligent learning assistant powered by LLaMA 3.1 and LangChain.
 
 ## 🚀 Live Demo
-[Click here to view the app](https://share.streamlit.io)
+[Click here to view the app](https://ai-tutor-chat-bot.streamlit.app/)
 
 ## ✨ Features
 - 💬 Chat with AI tutor on any topic
