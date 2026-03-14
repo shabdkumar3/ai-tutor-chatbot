@@ -17,12 +17,39 @@ st.set_page_config(
     page_title="NeuroLearn - AI Tutor",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
 
 
 st.markdown("""
 <style>
+    /* Hide Streamlit sidebar completely */
+    [data-testid="stSidebar"] {
+        display: none !important;
+    }
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+
+    /* Left panel column — sidebar look */
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+        background: #f8f9ff;
+        border-right: 1px solid #e0e4f0;
+        min-height: calc(100vh - 120px);
+        padding: 1rem 0.75rem !important;
+    }
+
+    .left-panel-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #374151;
+        margin-bottom: 0.25rem;
+    }
+    .left-panel-caption {
+        font-size: 0.78rem;
+        color: #9ca3af;
+        margin-bottom: 0.75rem;
+    }
+
     /* Main header styling */
     .main-header {
         text-align: center;
@@ -236,18 +263,16 @@ def process_image(file) -> bool:
 
 
 
-st.markdown(
-    '<div class="main-header">'
-    "<h1>🎓 NeuroLearn - AI Tutor</h1>"
-    "<p>Upload a document or type a topic — learn with quizzes, mind maps, and flashcards.</p>"
-    "</div>",
-    unsafe_allow_html=True,
-)
+# ── Two-column layout: left panel + main content ──────────────────────────────
+left_col, main_col = st.columns([1, 3], gap="small")
 
+# ── LEFT PANEL ─────────────────────────────────────────────────────────────────
+with left_col:
+    st.markdown("### 🎓 NeuroLearn")
+    st.markdown("---")
 
-with st.sidebar:
-    st.header("📎 Upload Files")
-    st.caption("Supported: PDF, PNG, JPG, JPEG")
+    st.markdown('<p class="left-panel-title">📎 Upload Files</p>', unsafe_allow_html=True)
+    st.markdown('<p class="left-panel-caption">Supported: PDF, PNG, JPG, JPEG</p>', unsafe_allow_html=True)
 
     uploaded_files = st.file_uploader(
         "Choose files",
@@ -259,7 +284,7 @@ with st.sidebar:
     if uploaded_files:
         if st.button("🚀 Process Files", use_container_width=True):
             success_count = 0
-            progress = st.progress(0, text="Processing files…")
+            progress = st.progress(0, text="Processing…")
 
             for idx, file in enumerate(uploaded_files):
                 if file.type == "application/pdf":
@@ -269,117 +294,252 @@ with st.sidebar:
 
                 if ok:
                     success_count += 1
-                progress.progress((idx + 1) / len(uploaded_files), text=f"Processed {idx + 1}/{len(uploaded_files)}")
+                progress.progress(
+                    (idx + 1) / len(uploaded_files),
+                    text=f"Processed {idx + 1}/{len(uploaded_files)}",
+                )
 
             progress.empty()
 
             if success_count > 0:
-                st.success(f"✅ {success_count} file(s) processed successfully!")
+                st.success(f"✅ {success_count} file(s) done!")
                 reset_features()
                 st.rerun()
             else:
-                st.error("No files could be processed. Please try again.")
+                st.error("Could not process files.")
 
     st.markdown("---")
 
-    
-    if st.button("🔄 Reset Conversation", use_container_width=True):
+    if st.session_state.topic:
+        st.markdown(f"📌 **Topic:**  \n{st.session_state.topic}")
+        st.markdown("---")
+
+    if st.button("🔄 Reset", use_container_width=True):
         for key, default in DEFAULTS.items():
             st.session_state[key] = default
         st.rerun()
 
-for message in st.session_state.chat_history:
-    with st.chat_message(message["role"], avatar="🧑‍🎓" if message["role"] == "user" else "🤖"):
-        st.markdown(message["content"])
+# ── MAIN CONTENT ────────────────────────────────────────────────────────────────
+with main_col:
+    st.markdown(
+        '<div class="main-header">'
+        "<h1>AI Tutor</h1>"
+        "<p>Upload a document or type a topic — learn with quizzes, mind maps, and flashcards.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-if st.session_state.topic:
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    st.caption(f"📌 Current topic: **{st.session_state.topic}**")
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"], avatar="🧑‍🎓" if message["role"] == "user" else "🤖"):
+            st.markdown(message["content"])
 
-    col1, col2, col3 = st.columns(3)
+    if st.session_state.topic:
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
-    with col1:
-        if st.button("📝 Quiz", use_container_width=True):
-            with st.spinner("Generating quiz…"):
-                try:
-                    prompt = [
-                        SystemMessage(
-                            content=(
-                                "Create exactly 5 multiple-choice questions. "
-                                "Return ONLY a JSON array of objects. Each object has keys: "
-                                "'question' (string), 'options' (list of 4 strings), "
-                                "'answer' (string matching one option). No extra text."
+        btn1, btn2, btn3 = st.columns(3)
+
+        with btn1:
+            if st.button("📝 Quiz", use_container_width=True):
+                with st.spinner("Generating quiz…"):
+                    try:
+                        prompt = [
+                            SystemMessage(
+                                content=(
+                                    "Create exactly 5 multiple-choice questions. "
+                                    "Return ONLY a JSON array of objects. Each object has keys: "
+                                    "'question' (string), 'options' (list of 4 strings), "
+                                    "'answer' (string matching one option). No extra text."
+                                )
+                            ),
+                            HumanMessage(
+                                content=f"Create 5 questions on: {st.session_state.topic}\nContext: {st.session_state.respons}"
+                            ),
+                        ]
+                        raw = model.invoke(prompt).content
+                        parsed = safe_parse_quiz(raw)
+                        if parsed:
+                            st.session_state.quiz = parsed
+                            reset_features(keep="quiz")
+                        else:
+                            st.error("Failed to generate quiz. Please try again.")
+                    except Exception as e:
+                        st.error(f"Error generating quiz: {e}")
+                st.rerun()
+
+        with btn2:
+            if st.button("🧠 Mind Map", use_container_width=True):
+                with st.spinner("Generating mind map…"):
+                    try:
+                        prompt = [
+                            HumanMessage(
+                                content=(
+                                    f"Create a mind map as JSON with keys: "
+                                    f"'central' (string), 'nodes' (list of strings), "
+                                    f"'edges' (list of [from, to] pairs). "
+                                    f"Topic: {st.session_state.topic}\n"
+                                    f"Context: {st.session_state.respons}\n"
+                                    f"Return ONLY valid JSON."
+                                )
                             )
-                        ),
-                        HumanMessage(
-                            content=f"Create 5 questions on: {st.session_state.topic}\nContext: {st.session_state.respons}"
-                        ),
-                    ]
-                    raw = model.invoke(prompt).content
-                    parsed = safe_parse_quiz(raw)
-                    if parsed:
-                        st.session_state.quiz = parsed
-                        reset_features(keep="quiz")
-                    else:
-                        st.error("Failed to generate quiz. Please try again.")
-                except Exception as e:
-                    st.error(f"Error generating quiz: {e}")
-            st.rerun()
+                        ]
+                        raw = model.invoke(prompt).content
+                        parsed = safe_parse_json(raw)
+                        if parsed and isinstance(parsed, dict) and "central" in parsed:
+                            st.session_state.mindmap = parsed
+                            reset_features(keep="mindmap")
+                        else:
+                            st.error("Failed to generate mind map. Please try again.")
+                    except Exception as e:
+                        st.error(f"Error generating mind map: {e}")
+                st.rerun()
 
-    with col2:
-        if st.button("🧠 Mind Map", use_container_width=True):
-            with st.spinner("Generating mind map…"):
-                try:
-                    prompt = [
-                        HumanMessage(
-                            content=(
-                                f"Create a mind map as JSON with keys: "
-                                f"'central' (string), 'nodes' (list of strings), "
-                                f"'edges' (list of [from, to] pairs). "
-                                f"Topic: {st.session_state.topic}\n"
-                                f"Context: {st.session_state.respons}\n"
-                                f"Return ONLY valid JSON."
+        with btn3:
+            if st.button("🃏 Flashcards", use_container_width=True):
+                with st.spinner("Generating flashcards…"):
+                    try:
+                        prompt = [
+                            SystemMessage(
+                                content=(
+                                    "You are a flashcard generator. Return ONLY a valid JSON array of 8 objects. "
+                                    "Each object has keys: 'front' (term/question) and 'back' (explanation/answer). "
+                                    "No extra text."
+                                )
+                            ),
+                            HumanMessage(
+                                content=f"Create 8 flashcards on: {st.session_state.topic}\nContext: {st.session_state.respons}"
+                            ),
+                        ]
+                        raw = model.invoke(prompt).content
+                        parsed = safe_parse_json(raw)
+                        if parsed and isinstance(parsed, list):
+                            st.session_state.flashcards = parsed
+                            reset_features(keep="flashcards")
+                        else:
+                            st.error("Failed to generate flashcards. Please try again.")
+                    except Exception as e:
+                        st.error(f"Error generating flashcards: {e}")
+                st.rerun()
+
+    # ── Quiz results ────────────────────────────────────────────────────────────
+    if st.session_state.quiz and isinstance(st.session_state.quiz, list):
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.subheader("📝 Quiz")
+
+        questions = st.session_state.quiz
+
+        for i, q in enumerate(questions):
+            if not isinstance(q, dict) or "question" not in q or "options" not in q:
+                continue
+            st.markdown(f"**Q{i + 1}.** {q['question']}")
+            st.session_state.answers[i] = st.radio(
+                label=f"Select your answer for Q{i + 1}",
+                options=q["options"],
+                key=f"q_{i}",
+                index=None,
+                label_visibility="collapsed",
+            )
+
+        if st.button("✅ Submit Answers", use_container_width=True):
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            score = 0
+            total = len(questions)
+
+            for i, q in enumerate(questions):
+                if not isinstance(q, dict):
+                    continue
+                user_answer = st.session_state.answers.get(i)
+                correct = q.get("answer", "")
+
+                if user_answer is None:
+                    st.warning(f"**Q{i + 1}:** ⏭️ Skipped")
+                elif user_answer == correct:
+                    st.success(f"**Q{i + 1}:** ✅ Correct!")
+                    score += 1
+                else:
+                    st.error(f"**Q{i + 1}:** ❌ Incorrect — Correct answer: **{correct}**")
+                    try:
+                        explanation = model.invoke([
+                            HumanMessage(
+                                content=f"In 1-2 sentences, explain why '{correct}' is correct for: {q['question']}"
                             )
-                        )
-                    ]
-                    raw = model.invoke(prompt).content
-                    parsed = safe_parse_json(raw)
-                    if parsed and isinstance(parsed, dict) and "central" in parsed:
-                        st.session_state.mindmap = parsed
-                        reset_features(keep="mindmap")
-                    else:
-                        st.error("Failed to generate mind map. Please try again.")
-                except Exception as e:
-                    st.error(f"Error generating mind map: {e}")
-            st.rerun()
+                        ])
+                        st.info(f"💡 {explanation.content}")
+                    except Exception:
+                        pass
 
-    with col3:
-        if st.button("🃏 Flashcards", use_container_width=True):
-            with st.spinner("Generating flashcards…"):
-                try:
-                    prompt = [
-                        SystemMessage(
-                            content=(
-                                "You are a flashcard generator. Return ONLY a valid JSON array of 8 objects. "
-                                "Each object has keys: 'front' (term/question) and 'back' (explanation/answer). "
-                                "No extra text."
-                            )
-                        ),
-                        HumanMessage(
-                            content=f"Create 8 flashcards on: {st.session_state.topic}\nContext: {st.session_state.respons}"
-                        ),
-                    ]
-                    raw = model.invoke(prompt).content
-                    parsed = safe_parse_json(raw)
-                    if parsed and isinstance(parsed, list):
-                        st.session_state.flashcards = parsed
-                        reset_features(keep="flashcards")
-                    else:
-                        st.error("Failed to generate flashcards. Please try again.")
-                except Exception as e:
-                    st.error(f"Error generating flashcards: {e}")
-            st.rerun()
+            percentage = (score / total * 100) if total > 0 else 0
+            emoji = "🏆" if percentage >= 80 else "👍" if percentage >= 60 else "📚"
+            st.markdown(
+                f'<div class="score-box">{emoji} Score: {score}/{total} ({percentage:.0f}%)</div>',
+                unsafe_allow_html=True,
+            )
 
+    # ── Mind Map ────────────────────────────────────────────────────────────────
+    if st.session_state.mindmap and isinstance(st.session_state.mindmap, dict):
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.subheader("🧠 Mind Map")
+
+        data = st.session_state.mindmap
+
+        try:
+            graph = graphviz.Digraph(
+                graph_attr={"rankdir": "LR", "bgcolor": "transparent", "fontname": "Helvetica", "pad": "0.5"},
+                node_attr={"style": "filled", "fillcolor": "#e8f4f8", "fontname": "Helvetica", "fontsize": "11", "shape": "roundedbox", "color": "#4a90d9"},
+                edge_attr={"color": "#999999", "arrowsize": "0.7"},
+            )
+            graph.node(data["central"], fillcolor="#667eea", fontcolor="white", fontsize="13", shape="ellipse", style="filled,bold")
+
+            for node in data.get("nodes", []):
+                graph.node(str(node))
+            for edge in data.get("edges", []):
+                if isinstance(edge, (list, tuple)) and len(edge) >= 2:
+                    graph.edge(str(edge[0]), str(edge[1]))
+
+            st.graphviz_chart(graph, use_container_width=True)
+        except Exception as e:
+            st.error(f"Could not render mind map: {e}")
+
+    # ── Flashcards ──────────────────────────────────────────────────────────────
+    if st.session_state.flashcards and isinstance(st.session_state.flashcards, list):
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.subheader("🃏 Flashcards")
+        st.caption("Click a card to flip it.")
+
+        cards = st.session_state.flashcards
+
+        for row_start in range(0, len(cards), 2):
+            fcols = st.columns(2)
+            for col_idx, card_idx in enumerate(range(row_start, min(row_start + 2, len(cards)))):
+                card = cards[card_idx]
+                if not isinstance(card, dict) or "front" not in card or "back" not in card:
+                    continue
+                with fcols[col_idx]:
+                    is_flipped = st.session_state.flipped.get(card_idx, False)
+                    if is_flipped:
+                        st.markdown(f'<div class="flashcard-back">{card["back"]}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div class="flashcard-front">{card["front"]}</div>', unsafe_allow_html=True)
+                    if st.button("🔄 Flip Back" if is_flipped else "🔄 Flip", key=f"flip_{card_idx}", use_container_width=True):
+                        st.session_state.flipped[card_idx] = not is_flipped
+                        st.rerun()
+
+    # ── Getting started ─────────────────────────────────────────────────────────
+    if not st.session_state.chat_history and not st.session_state.topic:
+        st.markdown("---")
+        st.markdown(
+            """
+            ### Getting Started
+
+            1. **Type a topic** in the chat box below — e.g., *"Explain photosynthesis"*
+            2. **Upload a PDF or image** using the panel on the left
+            3. Once a topic is loaded, use **Quiz**, **Mind Map**, or **Flashcards** to reinforce learning
+
+            ---
+            *Created by Shabd Kumar (IIT Delhi)*
+            """
+        )
+
+# ── Chat input (always at page bottom) ─────────────────────────────────────────
 question = st.chat_input("💬 Enter a topic or ask a question…")
 
 if question:
@@ -418,161 +578,3 @@ if question:
         )
 
     st.rerun()
-
-if st.session_state.quiz and isinstance(st.session_state.quiz, list):
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    st.subheader("📝 Quiz")
-
-    questions = st.session_state.quiz
-
-    for i, q in enumerate(questions):
-        if not isinstance(q, dict) or "question" not in q or "options" not in q:
-            continue
-        st.markdown(f"**Q{i + 1}.** {q['question']}")
-        st.session_state.answers[i] = st.radio(
-            label=f"Select your answer for Q{i + 1}",
-            options=q["options"],
-            key=f"q_{i}",
-            index=None,
-            label_visibility="collapsed",
-        )
-
-    if st.button("✅ Submit Answers", use_container_width=True):
-        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        score = 0
-        total = len(questions)
-
-        for i, q in enumerate(questions):
-            if not isinstance(q, dict):
-                continue
-            user_answer = st.session_state.answers.get(i)
-            correct = q.get("answer", "")
-
-            if user_answer is None:
-                st.warning(f"**Q{i + 1}:** ⏭️ Skipped")
-            elif user_answer == correct:
-                st.success(f"**Q{i + 1}:** ✅ Correct!")
-                score += 1
-            else:
-                st.error(f"**Q{i + 1}:** ❌ Incorrect — Correct answer: **{correct}**")
-                try:
-                    explanation = model.invoke([
-                        HumanMessage(
-                            content=f"In 1-2 sentences, explain why '{correct}' is correct for: {q['question']}"
-                        )
-                    ])
-                    st.info(f"💡 {explanation.content}")
-                except Exception:
-                    pass
-
-        # Score display
-        percentage = (score / total * 100) if total > 0 else 0
-        emoji = "🏆" if percentage >= 80 else "👍" if percentage >= 60 else "📚"
-        st.markdown(
-            f'<div class="score-box">{emoji} Score: {score}/{total} ({percentage:.0f}%)</div>',
-            unsafe_allow_html=True,
-        )
-
-
-if st.session_state.mindmap and isinstance(st.session_state.mindmap, dict):
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    st.subheader("🧠 Mind Map")
-
-    data = st.session_state.mindmap
-
-    try:
-        graph = graphviz.Digraph(
-            graph_attr={
-                "rankdir": "LR",
-                "bgcolor": "transparent",
-                "fontname": "Helvetica",
-                "pad": "0.5",
-            },
-            node_attr={
-                "style": "filled",
-                "fillcolor": "#e8f4f8",
-                "fontname": "Helvetica",
-                "fontsize": "11",
-                "shape": "roundedbox",
-                "color": "#4a90d9",
-            },
-            edge_attr={
-                "color": "#999999",
-                "arrowsize": "0.7",
-            },
-        )
-
-        graph.node(
-            data["central"],
-            fillcolor="#667eea",
-            fontcolor="white",
-            fontsize="13",
-            shape="ellipse",
-            style="filled,bold",
-        )
-
-        for node in data.get("nodes", []):
-            graph.node(str(node))
-
-        for edge in data.get("edges", []):
-            if isinstance(edge, (list, tuple)) and len(edge) >= 2:
-                graph.edge(str(edge[0]), str(edge[1]))
-
-        st.graphviz_chart(graph, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Could not render mind map: {e}")
-
-
-if st.session_state.flashcards and isinstance(st.session_state.flashcards, list):
-    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-    st.subheader("🃏 Flashcards")
-    st.caption("Click a card to flip it.")
-
-    cards = st.session_state.flashcards
-
-  
-    for row_start in range(0, len(cards), 2):
-        cols = st.columns(2)
-        for col_idx, card_idx in enumerate(range(row_start, min(row_start + 2, len(cards)))):
-            card = cards[card_idx]
-            if not isinstance(card, dict) or "front" not in card or "back" not in card:
-                continue
-
-            with cols[col_idx]:
-                is_flipped = st.session_state.flipped.get(card_idx, False)
-
-                if is_flipped:
-                    st.markdown(
-                        f'<div class="flashcard-back">{card["back"]}</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        f'<div class="flashcard-front">{card["front"]}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                if st.button(
-                    "🔄 Flip" if not is_flipped else "🔄 Flip Back",
-                    key=f"flip_{card_idx}",
-                    use_container_width=True,
-                ):
-                    st.session_state.flipped[card_idx] = not is_flipped
-                    st.rerun()
-
-
-if not st.session_state.chat_history and not st.session_state.topic:
-    st.markdown("---")
-    st.markdown(
-        """
-        ### Getting Started
-
-        1. **Type a topic** in the chat box below — e.g., *"Explain photosynthesis"*
-        2. **Upload a PDF or image** using the sidebar to learn from your own material
-        3. Once a topic is loaded, use **Quiz**, **Mind Map**, or **Flashcards** to reinforce learning
-
-        ---
-        *Created by Shabd Kumar(IIT Delhi)*
-        """,
-    )
