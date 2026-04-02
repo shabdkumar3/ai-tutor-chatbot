@@ -9,3 +9,4 @@ sentence-transformers
 chromadb
 pypdf
 graphviz
+protobuf==3.20.3
